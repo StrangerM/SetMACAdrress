@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Text.RegularExpressions;
 
@@ -9,24 +10,24 @@ namespace SetMACAdrress
         public Form1()
         {
             InitializeComponent();
-            LoadAdapters();
+            LoadWiFiAdapters();
         }
 
-        private void LoadAdapters()
+        private void LoadWiFiAdapters()
         {
-            var adapters = NetworkInterface.GetAllNetworkInterfaces()
-                                           .Where(adapter => adapter.NetworkInterfaceType == NetworkInterfaceType.Ethernet);
+            var wifiAdapters = NetworkInterface.GetAllNetworkInterfaces()
+                                               .Where(adapter => adapter.NetworkInterfaceType == NetworkInterfaceType.Wireless80211);
 
-            foreach (var adapter in adapters)
+            foreach (var adapter in wifiAdapters)
             {
                 comboBoxAdapters.Items.Add(adapter.Name);
             }
 
             if (comboBoxAdapters.Items.Count > 0)
-                comboBoxAdapters.SelectedIndex = 0; // Select the first item
+                comboBoxAdapters.SelectedIndex = 0;
         }
 
-        // When a new adapter is selected, display its MAC address
+        // When an adapter is selected, display its MAC address
         private void comboBoxAdapters_SelectedIndexChanged(object sender, EventArgs e)
         {
             var selectedAdapter = comboBoxAdapters.SelectedItem.ToString();
@@ -39,14 +40,14 @@ namespace SetMACAdrress
             }
         }
 
-        // Validate if the new MAC address is in a valid format
+        // Validate the new MAC address format
         private bool IsValidMac(string mac)
         {
             var regex = new Regex(@"^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$");
             return regex.IsMatch(mac);
         }
 
-        // Event handler for changing the MAC address
+        // Change MAC Address button click event
         private void btnChangeMac_Click(object sender, EventArgs e)
         {
             var selectedAdapter = comboBoxAdapters.SelectedItem.ToString();
@@ -70,7 +71,8 @@ namespace SetMACAdrress
             try
             {
                 ChangeMacAddress(adapter, newMac);
-                MessageBox.Show("MAC Address changed successfully! Please restart the network adapter.");
+                MessageBox.Show("MAC Address changed successfully! Please restart the Wi-Fi adapter.");
+                RestartWiFiAdapter(adapter);
             }
             catch (Exception ex)
             {
@@ -78,7 +80,7 @@ namespace SetMACAdrress
             }
         }
 
-        // Function to change MAC address in the registry
+        // Change the MAC address in the registry
         private void ChangeMacAddress(NetworkInterface adapter, string newMac)
         {
             string registryPath = @"SYSTEM\CurrentControlSet\Control\Class\{4D36E972-E325-11CE-BFC1-08002BE10318}";
@@ -93,13 +95,31 @@ namespace SetMACAdrress
 
                         if (driverDesc != null && driverDesc == adapter.Description)
                         {
-                            // Replace hyphens with no separators for registry format
+                            // Replace hyphens/colons with no separators for registry format
                             string formattedMac = newMac.Replace(":", "").Replace("-", "").ToUpper();
                             subkey.SetValue("NetworkAddress", formattedMac);
                         }
                     }
                 }
             }
+        }
+
+        // Disable and re-enable the Wi-Fi adapter to apply the new MAC address
+        private void RestartWiFiAdapter(NetworkInterface adapter)
+        {
+            string adapterName = adapter.Name;
+
+            // Use netsh command to disable and enable the Wi-Fi adapter
+            ProcessStartInfo psiDisable = new ProcessStartInfo("netsh", $"interface set interface \"{adapterName}\" admin=disable");
+            psiDisable.WindowStyle = ProcessWindowStyle.Hidden;
+            ProcessStartInfo psiEnable = new ProcessStartInfo("netsh", $"interface set interface \"{adapterName}\" admin=enable");
+            psiEnable.WindowStyle = ProcessWindowStyle.Hidden;
+
+            Process disableProcess = Process.Start(psiDisable);
+            disableProcess.WaitForExit();
+
+            Process enableProcess = Process.Start(psiEnable);
+            enableProcess.WaitForExit();
         }
     }
 }
